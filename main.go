@@ -7,21 +7,28 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"net/http"
+	"github.com/labstack/echo/v4"
 )
+
+type MeuIp struct{
+	HeaderEscondido 	 	string 	`json:"headerEscondido"`
+	StatusCodeRespondido 	string 	`json:"statusCode"`
+	Ip 					 	string 	`json:"ip"`
+}
 
 func main() {
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-
-	if err != nil{
-		fmt.Println("Erro: ", err)
-	}
+	
+	
 
 	publicKey := privateKey.PublicKey
 	
 	clientValue := encrypt("O Morte, torne-se minha lamina mais uma vez")
 	fmt.Println("Seu valor encriptado em base64: ",clientValue)
-	
+
 	encryptedValue, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, &publicKey, []byte(clientValue), nil)
 	if err != nil{
 		fmt.Println("Erro: ", err)
@@ -37,10 +44,70 @@ func main() {
 
 	fmt.Println("Seu valor em base64: ", string(descrypedValue))
 	fmt.Println("Seu valor descriptografado: ", decrypt(string(descrypedValue)))
+
+	routes()
+	//enviarMsg()
+}
+
+
+
+func routes(){
+	e := echo.New()
+	e.GET("/", func(c echo.Context) error{
+		mensagem := c.QueryParam("msg")
+		return c.String(http.StatusOK, mensagem)
+		//return c.String(http.StatusOK, "Aloooo")
+	})
+
+	e.GET("/meu-ip", func(c echo.Context) error {
+		r, err := getIp()
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError)
+		}
+		return c.JSON(http.StatusOK, r)
+	})
+	e.Logger.Fatal(e.Start(":7801"))
+}
+
+func enviarMsg(c echo.Context) error{
+	mensagem := c.QueryParam("msg")
+	return c.String(http.StatusOK, mensagem)
+}
+
+func getIp() (MeuIp, error){
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	
+	resp, err := client.Get("https://distopia.savi2w.workers.dev/")
+	if err != nil {
+		return MeuIp{}, err
+	}
+
+	resp2, err := http.Get("https://distopia.savi2w.workers.dev/")
+	if err != nil {
+		return MeuIp{}, err
+	}
+
+	body, err := io.ReadAll(resp2.Body)
+	if err != nil{
+		return MeuIp{}, err
+	}
+	
+	resp.Body.Close()
+
+	return MeuIp{
+		HeaderEscondido: resp.Header.Get("Distopia"),
+		StatusCodeRespondido: resp.Status,
+		Ip: string(body),
+	}, nil
 }
 
 func encrypt(value string) string{
-	return base64.RawStdEncoding.EncodeToString([]byte(value))
+	return base64.StdEncoding.EncodeToString([]byte(value))
 }
 
 func decrypt(base64Encoded string) string{
